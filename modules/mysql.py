@@ -10,7 +10,7 @@ def _login(_url, _user='root', _pass=''):
 	_port = int(_netlocs[1])
 	_path = _up.path.strip('/')
 	try:
-		MySQLdb.connect(host=_host, port=_port, user=_user, passwd=_pass, db=_path)
+		MySQLdb.connect(host=_host, port=_port, user=_user, passwd=_pass, db=_path, connect_timeout=30)
 		return (True,'')
 	except Exception as e:
 		if 'Access denied' in str(e):
