@@ -1,5 +1,5 @@
 # encoding: utf-8
-# mysql login function
+# mssql login function
 # author: 
 
 

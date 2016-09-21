@@ -1,5 +1,5 @@
 # encoding: utf-8
-# mysql login function
+# ftp login function
 # author: 
 
 def _login(_url, _user='root', _pass=''):
