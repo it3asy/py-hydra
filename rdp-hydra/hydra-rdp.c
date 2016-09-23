@@ -2116,7 +2116,7 @@ BOOL rdp_loop(BOOL * deactivated, uint32 * ext_disc_reason) {
 
   while (cont) {
     s = rdp_recv(&type);
-    if (rdp_recv(&type) == NULL)
+    if (s == NULL)
       return False;
     
     switch (type) {
