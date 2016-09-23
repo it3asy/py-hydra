@@ -1,38 +1,3 @@
-/*
-   david: this module is heavily based on rdesktop v 1.7.0
-
-   rdesktop: A Remote Desktop Protocol client.
-   Protocol services - RDP layer
-   Copyright (C) Matthew Chapman <matthewc.unsw.edu.au> 1999-2008
-   Copyright 2003-2011 Peter Astrand <astrand@cendio.se> for Cendio AB
-
-   This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
-
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
-
-   You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-note:
-
-this module was tested on w2k, xp, w2k3, w2k8
-
-in terminal services configuration, in rdp-tcp properties
-in Logon Settings tab, if 'Always prompt for password' is checked,
-the password can't be passed interactively so there is no way
-to test the credential (unless manually).
-
-it's advised to lower the number of parallel tasks as RDP server
-can't handle multiple connections at the same time.
-It's particularly true on windows XP
-
-*/
 
 #ifndef LIBOPENSSL
 #include <stdio.h>
@@ -101,6 +66,7 @@ static RDP_ORDER_STATE g_order_state;
 
 #define STREAM_COUNT 1
 
+int g_lock = 0;
 
 int g_sock;
 static struct stream g_in;
@@ -391,18 +357,7 @@ static BOOL mcs_recv_connect_response(STREAM mcs_data) {
   ber_parse_header(s, BER_TAG_OCTET_STRING, &length);
 
   sec_process_mcs_data(s);
-  /*
-     if (length > mcs_data->size)
-     {
-     error("MCS data length %d, expected %d\n", length,
-     mcs_data->size);
-     length = mcs_data->size;
-     }
 
-     in_uint8a(s, mcs_data->data, length);
-     mcs_data->p = mcs_data->data;
-     mcs_data->end = mcs_data->data + length;
-   */
   return s_check_end(s);
 }
 
@@ -1650,10 +1605,6 @@ STREAM sec_recv(uint8 * rdpver) {
           s->p[2] = s->p[3];
           s->p[3] = swapbyte;
         }
-#ifdef WITH_DEBUG
-        /* warning!  this debug statement will show passwords in the clear! */
-        hexdump(s->p, s->end - s->p);
-#endif
       }
 
     }
@@ -1878,8 +1829,7 @@ static void process_memblt(STREAM s, MEMBLT_ORDER * os, uint32 present, BOOL del
 
   if ((os->opcode == 0xcc && os->x == 740 && os->y == 448 && os->cx == 60 && os->cy == 56 && os->cache_id == 2) ||
       (os->opcode == 0xcc && os->x == 640 && os->y == 128 && os->cx == 64 && os->cy == 64 && os->cache_id == 2 && os->cache_idx > 100)) {
-    if (debug)
-      hydra_report(stderr, "[DEBUG] Login failed from process_memblt\n");
+
     login_result = LOGIN_FAIL;
   }
 }
@@ -1954,15 +1904,11 @@ static void process_text2(STREAM s, TEXT2_ORDER * os, uint32 present, BOOL delta
   }
   //on win2k, error can be fe 00 00 or fe 02 00
   if (((os->text[0] == 254) && (os->text[2] == 0)) || (!memcmp(os->text, LOGON_MESSAGE_FAILED_XP, 18))) {
-    if (debug)
-      hydra_report(stderr, "[DEBUG] login failed from process_text2\n");
     login_result = LOGIN_FAIL;
   } else {
     //if it's not an well known error and if it's not just traffic from win 2000 server
 
     if ((os_version == 2000) && (os->length > 50)) {
-      if (debug)
-        hydra_report(stderr, "[DEBUG] login success from process_text2\n");
       login_result = LOGIN_SUCC;
     }
   }
@@ -2068,9 +2014,7 @@ void process_orders(STREAM s, uint16 num_orders) {
         break;
 
       default:
-        if (debug)
-          printf("[DEBUG] unknown order_type: %d\n", os->order_type);
-
+      ;
       }
     }
 
@@ -2172,10 +2116,9 @@ BOOL rdp_loop(BOOL * deactivated, uint32 * ext_disc_reason) {
 
   while (cont) {
     s = rdp_recv(&type);
-
-    if (s == NULL) {
+    if (rdp_recv(&type) == NULL)
       return False;
-    }
+    
     switch (type) {
     case RDP_PDU_DEMAND_ACTIVE:
       process_demand_active(s);
@@ -2367,9 +2310,9 @@ static void rdp_send_logon_info(uint32 flags, char *domain, char *user, char *pa
 
 /* Establish a connection up to the RDP layer */
 BOOL rdp_connect(char *server, uint32 flags, char *domain, char *login, char *password, char *command, char *directory, BOOL reconnect) {
-  if (!sec_connect(server, login, reconnect))
+  if (!sec_connect(server, login, reconnect)) 
     return False;
-
+ 
   rdp_send_logon_info(flags, domain, login, password, command, directory);
   return True;
 }
@@ -2400,7 +2343,6 @@ int start_rdp(int s, char *ip, int port, char *login, char *pass, unsigned char 
     strncpy(domain, miscptr, sizeof(domain) - 1);
     domain[sizeof(domain) - 1] = 0;
   }
-
   if (!rdp_connect(server, flags, domain, login, pass, shell, directory, g_redirect))
     return -1;
 
@@ -2417,18 +2359,25 @@ int start_rdp(int s, char *ip, int port, char *login, char *pass, unsigned char 
 }
 
 int service_rdp(char *ip, int port, char *miscptr, char *login, char *pass) {
+  while (g_lock) {
+    //printf("hydra-rdp locked, waiting...\n");
+    usleepn(1500);
+  }
+  g_lock = 1;
   unsigned char options = 4;
   int sp = 0;
   int run = 1, next_run = 1;
   int myport = PORT_RDP;
   if (port != 0)
     myport = port;
-
+  rdesktop_reset_state();
   g_sock = hydra_connect_tcp(ip, myport);
   if (g_sock < 0) {
+  g_lock  = 0;
     return -1; 
   }
   int r = start_rdp(g_sock, ip, port, login, pass, options, miscptr);
+  g_lock = 0;
   return r;
 }
 
@@ -2526,41 +2475,6 @@ void warning(char *format, ...) {
 
 /* report an unimplemented protocol feature */
 void unimpl(char *format, ...) {
-  if (debug) {
-    va_list ap;
-
-    fprintf(stderr, "[DEBUG] not implemented: ");
-
-    va_start(ap, format);
-    hydra_report(stderr, format, ap);
-    va_end(ap);
-  }
-}
-
-/* produce a hex dump */
-void hexdump(unsigned char *p, unsigned int len) {
-  unsigned char *line = p;
-  int i, thisline, offset = 0;
-
-  while (offset < len) {
-    printf("%04x ", offset);
-    thisline = len - offset;
-    if (thisline > 16)
-      thisline = 16;
-
-    for (i = 0; i < thisline; i++)
-      printf("%02x ", line[i]);
-
-    for (; i < 16; i++)
-      printf("   ");
-
-    for (i = 0; i < thisline; i++)
-      printf("%c", (line[i] >= 0x20 && line[i] < 0x7f) ? line[i] : '.');
-
-    printf("\n");
-    offset += thisline;
-    line += thisline;
-  }
 }
 
 /* Initialise an RDP data packet */
