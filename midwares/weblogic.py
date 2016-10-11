@@ -6,9 +6,7 @@ def _login(_url, _user='weblogic', _pass='weblogic'):
 	url = _url + '/console/j_security_check'
 	data = {"j_username":_user, "j_password":_pass}
 	try:
-		print data
 		resp = requests.post(url=url, data=data, timeout=10)
-		print resp.url
 		if resp.url.endswith('LoginForm.jsp'):
 			return (False, '')
 		elif 'console.portal' in resp.url:
