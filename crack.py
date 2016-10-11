@@ -29,7 +29,7 @@ class BruteModel(object):
 			try:
 				self._login_ex = getattr(__import__(self.midware), '_login')
 			except:
-				self.error = "load module %s error" % self.scheme
+				self.error = "load module %s error" % self.midware
 
 	def _debug(self, s, level):
 		if level <= self.options._debug_level:
