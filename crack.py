@@ -9,19 +9,27 @@ import sys,os,inspect
 ROOT_DIR = os.path.abspath(os.path.dirname(inspect.getfile(inspect.currentframe())))
 DICT_DIR = ROOT_DIR + '/dict/'
 sys.path.append(ROOT_DIR+'/modules')
+sys.path.append(ROOT_DIR+'/midwares')
 
 
 class BruteModel(object):
 	def __init__(self, target_url, options):
 		self.target_url = target_url
 		self.options = options
+		self.midware = options._midware
 		self.cracked = []
 		self.error = ''
 		self.scheme = urlparse.urlparse(self.target_url).scheme
-		try:
-			self._login_ex = getattr(__import__(self.scheme), '_login')
-		except:
-			self.error = "load module %s error" % self.scheme
+		if self.midware == '':
+			try:
+				self._login_ex = getattr(__import__(self.scheme), '_login')
+			except:
+				self.error = "load module %s error" % self.scheme
+		else:
+			try:
+				self._login_ex = getattr(__import__(self.midware), '_login')
+			except:
+				self.error = "load module %s error" % self.scheme
 
 	def _debug(self, s, level):
 		if level <= self.options._debug_level:
@@ -92,7 +100,7 @@ class BruteModel(object):
 		elif self._check():
 			self._brute_force()
 		else:
-			self._debug('remote service invalid or not brutable',1)
+			self._debug('service [%s] invalid or not brutable'%self.target_url,1)
 
 
 def bruteforce(url,options):
@@ -104,6 +112,7 @@ def bruteforce(url,options):
 if __name__ == '__main__':
 	parser = optparse.OptionParser('usage: %prog [options] service_url')
 	parser.add_option('-t', metavar = 'THREAD NUMS', dest='_threads_num', default=1, type='int', help='Number of threads. default=1')
+	parser.add_option('-m', metavar = 'MIDWARE', dest='_midware', default='', type='string', help='midware[weblogic|tomcat|jboss|...]')
 	parser.add_option('-l', metavar='LOGIN', dest='_login', default=None, type='string', help='login with LOGIN name')
 	parser.add_option('-p', metavar='PASS', dest='_pass', default=None, type='string', help='try password PASS')
 	parser.add_option('-L', metavar='FILE', dest='_login_dict', default='common_user', type='string', help='load several logins from FILE')
